@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Audio Volume Limiter</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="head">
+    <h1>Audio Volume Limiter</h1>
+    <label class="switch" for="toggle">
+      <input type="checkbox" id="toggle" role="switch" aria-label="Turn audio limiting on or off for this tab">
+      <span class="track"><span class="thumb"></span></span>
+    </label>
+  </header>
+
+  <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
+  <p id="error" class="error" role="alert" hidden></p>
+  <p id="pinHint" class="error" role="alert" hidden>Could not lock this tab's website volume. Website volume or mute controls may still affect the audio. See Event log for details.</p>
+
+  <section id="blockedBox" class="blocked-box" hidden>
+    <p class="blocked-note">Limiting stopped for these tabs and could not be restored. Open the tab, click the extension icon, and turn it on again.</p>
+    <ul id="blockedList" class="blocked-list"></ul>
+  </section>
+
+  <section class="meter-block" aria-label="Audio level">
+    <div class="meter" id="meter">
+      <div class="meter-fill" id="meterFill"></div>
+      <div class="meter-peak" id="meterPeak"></div>
+      <div class="meter-limit" id="meterLimit"></div>
+    </div>
+    <div class="scale" aria-hidden="true">
+      <span>-60</span><span>-45</span><span>-30</span><span>-15</span><span>0 dB</span>
+    </div>
+    <div class="readout">
+      <span>Peak <b id="peakVal">--</b></span>
+      <span>RMS <b id="rmsVal">--</b></span>
+      <span>Reduction <b id="grVal">--</b></span>
+    </div>
+  </section>
+
+  <section class="control">
+    <div class="row">
+      <label for="threshold">Hard volume ceiling</label>
+      <output id="thresholdVal" for="threshold">-12 dB</output>
+    </div>
+    <input type="range" id="threshold" min="-60" max="0" step="1" value="-12" aria-describedby="thresholdHint">
+    <p id="thresholdHint" class="hint">Audio from limited tabs will not exceed this value (dBFS).</p>
+  </section>
+
+  <section class="control">
+    <div class="row">
+      <label for="master">Master volume</label>
+      <output id="masterVal" for="master">0 dB</output>
+    </div>
+    <input type="range" id="master" min="-40" max="0" step="1" value="0">
+  </section>
+
+  <section class="control">
+    <label for="preset">Preset</label>
+    <select id="preset">
+      <option value="custom">Custom</option>
+      <option value="night">Night mode (compress effects)</option>
+      <option value="speech">Speech focus</option>
+    </select>
+  </section>
+
+  <details class="log">
+    <summary>Event log (for troubleshooting audio interruptions)</summary>
+    <ul id="logList" class="log-list"></ul>
+  </details>
+
+  <footer class="foot">Shortcut: Ctrl+Shift+L (customize it at chrome://extensions/shortcuts)</footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>
