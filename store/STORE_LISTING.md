@@ -15,7 +15,6 @@ Tired of loud ads interrupting a quiet video? Audio Volume Limiter sets a ceilin
 - Set an absolute -60 to 0 dBFS ceiling with a brick-wall limiter.
 - Adjust the ceiling and master volume instantly without reloading a tab.
 - View Peak, RMS, and gain-reduction metering.
-- Choose Night mode or Speech focus.
 - Limit multiple tabs at once by enabling them individually.
 - Website volume and mute controls do not affect audible output while limiting is on.
 - Automatically reconnect after stream interruptions, with an event log in the popup.

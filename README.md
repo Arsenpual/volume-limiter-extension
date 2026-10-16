@@ -10,7 +10,6 @@
 
 - A brick-wall look-ahead limiter with a -60 to 0 dBFS ceiling.
 - Shared master-volume control and Peak, RMS, and gain-reduction metering.
-- Custom, Night mode, and Speech focus presets.
 - Multiple tabs can be limited simultaneously after enabling them individually.
 - Automatic recovery after an audio stream interruption.
 - Website `<audio>` and `<video>` volume/mute controls are pinned while the limiter is enabled, so the extension is the audible volume controller.

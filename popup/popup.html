@@ -17,10 +17,10 @@
 
   <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
   <p id="error" class="error" role="alert" hidden></p>
-  <p id="pinHint" class="error" role="alert" hidden>Could not lock this tab's website volume. Website volume or mute controls may still affect the audio. See Event log for details.</p>
+  <p id="pinHint" class="error" role="alert" hidden>Website volume lock unavailable.</p>
 
   <section id="blockedBox" class="blocked-box" hidden>
-    <p class="blocked-note">Limiting stopped for these tabs and could not be restored. Open the tab, click the extension icon, and turn it on again.</p>
+    <p class="blocked-note">Reconnect these tabs from their extension menu.</p>
     <ul id="blockedList" class="blocked-list"></ul>
   </section>
 
@@ -45,8 +45,7 @@
       <label for="threshold">Hard volume ceiling</label>
       <output id="thresholdVal" for="threshold">-12 dB</output>
     </div>
-    <input type="range" id="threshold" min="-60" max="0" step="1" value="-12" aria-describedby="thresholdHint">
-    <p id="thresholdHint" class="hint">Audio from limited tabs will not exceed this value (dBFS).</p>
+    <input type="range" id="threshold" min="-60" max="0" step="1" value="-12">
   </section>
 
   <section class="control">
@@ -57,22 +56,20 @@
     <input type="range" id="master" min="-40" max="0" step="1" value="0">
   </section>
 
-  <section class="control">
-    <label for="preset">Preset</label>
-    <select id="preset">
-      <option value="custom">Custom</option>
-      <option value="night">Night mode (compress effects)</option>
-      <option value="speech">Speech focus</option>
-    </select>
+  <section class="sound-test" aria-labelledby="soundTestTitle">
+    <label id="soundTestTitle" for="soundTest">Peak test</label>
+    <output id="soundTestLevel" for="soundTest">Set a level to test</output>
+    <button id="soundTest" type="button">Play</button>
   </section>
 
   <details class="log">
-    <summary>Event log (for troubleshooting audio interruptions)</summary>
+    <summary>Event log</summary>
     <ul id="logList" class="log-list"></ul>
   </details>
 
-  <footer class="foot">Shortcut: Ctrl+Shift+L (customize it at chrome://extensions/shortcuts)</footer>
+  <footer class="foot">Ctrl+Shift+L</footer>
 
+  <script src="soundtest.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

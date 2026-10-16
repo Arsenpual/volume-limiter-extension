@@ -1,8 +1,5 @@
-// Popup UI: per-tab switch, volume ceiling, master volume, presets, and meter.
-const PRESET_THRESHOLDS = { night: -26, speech: -18 }; // Custom uses the slider value.
+// Popup UI: per-tab switch, volume ceiling, master volume, and meter.
 const METER_MIN = -60;
-const SILENCE_DB = -70;
-const SILENCE_MS = 5000;
 const POLL_MS = 2000;
 
 const $ = (id) => document.getElementById(id);
@@ -18,7 +15,8 @@ const els = {
   thresholdVal: $('thresholdVal'),
   master: $('master'),
   masterVal: $('masterVal'),
-  preset: $('preset'),
+  soundTest: $('soundTest'),
+  soundTestLevel: $('soundTestLevel'),
   fill: $('meterFill'),
   peak: $('meterPeak'),
   limit: $('meterLimit'),
@@ -33,7 +31,7 @@ let port = null;
 let busy = false;
 let peakHold = METER_MIN;
 let peakHoldAt = 0;
-let lastSoundAt = 0;
+let testActive = false;
 
 const pct = (db) => Math.min(100, Math.max(0, ((db - METER_MIN) / -METER_MIN) * 100));
 const fmt = (db) => (db <= -99 ? '-∞' : db.toFixed(1));
@@ -117,6 +115,45 @@ function renderMaster() {
   els.masterVal.textContent = v <= -40 ? 'Muted' : v + ' dB';
 }
 
+function currentTestPeakDb() {
+  return AVLSoundTest.outputPeakDb(Number(els.threshold.value), Number(els.master.value));
+}
+
+function renderSoundTest() {
+  const peakDb = currentTestPeakDb();
+  const muted = peakDb === -Infinity;
+  els.soundTest.disabled = muted;
+  els.soundTestLevel.textContent = muted ? 'Master volume is muted' : 'Peak: ' + peakDb + ' dBFS';
+  if (!testActive) els.soundTest.textContent = 'Play';
+}
+
+function stopSoundTest() {
+  if (!testActive) return;
+  testActive = false;
+  send({ type: 'TEST_STOP' }).catch(() => {});
+  els.soundTest.textContent = 'Play';
+  if (!state.enabled) disconnectMeter();
+  renderSoundTest();
+}
+
+async function toggleSoundTest() {
+  if (testActive) {
+    stopSoundTest();
+    return;
+  }
+  if (currentTestPeakDb() === -Infinity) return;
+  try {
+    const result = await send({ type: 'TEST_START' });
+    if (!result || !result.ok) throw new Error('test start failed');
+    testActive = true;
+    connectMeter();
+    els.soundTest.textContent = 'Stop';
+  } catch (e) {
+    stopSoundTest();
+    showError('Could not start the peak test.');
+  }
+}
+
 function renderMarker() {
   els.limit.style.left = pct(Number(els.threshold.value)) + '%';
 }
@@ -137,19 +174,19 @@ function render() {
   renderBlocked();
   renderLog();
   renderMarker();
-  if (!state.enabled) resetMeter();
+  renderSoundTest();
+  if (!state.enabled && !testActive) resetMeter();
 }
 
 // ---------- meter ----------
 function connectMeter() {
-  if (port || !state.enabled) return;
+  if (port || (!state.enabled && !testActive)) return;
   try {
     port = chrome.runtime.connect({ name: 'meter' });
   } catch (e) {
     port = null;
     return;
   }
-  lastSoundAt = Date.now();
   port.onMessage.addListener(onLevel);
   port.onDisconnect.addListener(() => {
     port = null;
@@ -184,13 +221,7 @@ function onLevel(m) {
   els.rmsVal.textContent = fmt(m.rms);
   els.grVal.textContent = m.reduction < -0.5 ? m.reduction.toFixed(1) + ' dB' : '0 dB';
 
-  if (m.peak > SILENCE_DB) lastSoundAt = now;
-  if (now - lastSoundAt > SILENCE_MS) {
-    els.status.textContent =
-      'No audio detected from a limited tab. It may not be playing, or the website may use DRM-protected content.';
-  } else {
-    renderStatus();
-  }
+  renderStatus();
 }
 
 // ---------- state sync ----------
@@ -201,7 +232,6 @@ async function loadState(applySettings) {
   if (applySettings) {
     els.threshold.value = s.threshold;
     els.thresholdVal.textContent = s.threshold + ' dB';
-    els.preset.value = s.preset;
     els.master.value = s.masterDb;
     renderMaster();
   }
@@ -245,27 +275,17 @@ async function onThreshold() {
   const value = Number(els.threshold.value);
   els.thresholdVal.textContent = value + ' dB';
   renderMarker();
+  renderSoundTest();
   await chrome.storage.local.set({ threshold: value });
-  if (state.enabled) send({ type: 'SETTINGS_CHANGED' }).catch(() => {});
+  if (state.enabled || testActive) send({ type: 'SETTINGS_CHANGED' }).catch(() => {});
 }
 
 async function onMaster() {
   renderMaster();
+  renderSoundTest();
+  if (currentTestPeakDb() === -Infinity) stopSoundTest();
   await chrome.storage.local.set({ masterDb: Number(els.master.value) });
-  if (state.enabled) send({ type: 'SETTINGS_CHANGED' }).catch(() => {});
-}
-
-async function onPreset() {
-  const preset = els.preset.value;
-  const patch = { preset };
-  if (PRESET_THRESHOLDS[preset] !== undefined) {
-    patch.threshold = PRESET_THRESHOLDS[preset];
-    els.threshold.value = patch.threshold;
-    els.thresholdVal.textContent = patch.threshold + ' dB';
-    renderMarker();
-  }
-  await chrome.storage.local.set(patch);
-  if (state.enabled) send({ type: 'SETTINGS_CHANGED' }).catch(() => {});
+  if (state.enabled || testActive) send({ type: 'SETTINGS_CHANGED' }).catch(() => {});
 }
 
 // ---------- init ----------
@@ -283,7 +303,7 @@ async function init() {
 els.toggle.addEventListener('change', onToggle);
 els.threshold.addEventListener('input', onThreshold);
 els.master.addEventListener('input', onMaster);
-els.preset.addEventListener('change', onPreset);
-window.addEventListener('pagehide', disconnectMeter);
+els.soundTest.addEventListener('click', toggleSoundTest);
+window.addEventListener('pagehide', () => { disconnectMeter(); stopSoundTest(); });
 
 init();

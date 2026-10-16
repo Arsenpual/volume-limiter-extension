@@ -9,7 +9,7 @@ Audio Volume Limiter processes audio entirely on your device. It does not record
 ## Data the extension accesses
 
 - **Tab audio streams:** Accessed only for tabs where you explicitly enable limiting. Audio is processed in real time and immediately returned to your speakers; it is never written to disk or persistent storage.
-- **Settings:** Ceiling, master-volume, and preset settings are stored only in `chrome.storage.local` on your device.
+- **Settings:** Ceiling and master-volume settings are stored only in `chrome.storage.local` on your device.
 - **Tab labels:** Used only to identify limited tabs in the popup and never transmitted.
 
 ## What the extension does not do
@@ -25,7 +25,7 @@ Audio Volume Limiter processes audio entirely on your device. It does not record
 |---|---|
 | `tabCapture` | Captures audio from user-enabled tabs for level limiting. |
 | `offscreen` | Creates a document to process audio with the Web Audio API. |
-| `storage` | Saves the selected ceiling, master volume, and preset. |
+| `storage` | Saves the selected ceiling and master volume. |
 | `activeTab` | Grants access to a tab after you click the extension icon or use its shortcut. |
 | `alarms` | Periodically checks that limiting remains active and attempts recovery. |
 | `scripting` | Injects the bundled media-volume lock script into user-enabled tabs. It does not read page content or use the network. |

@@ -2,17 +2,10 @@
 // หลักการ: "wanted" = แท็บที่ผู้ใช้ต้องการให้คุม, "captures" = แท็บที่กำลังคุมจริง
 // ถ้าสองอย่างนี้ไม่ตรงกัน (สตรีมจบเอง, offscreen หาย) จะพยายามต่อใหม่เอง
 const OFFSCREEN_URL = 'offscreen/offscreen.html';
-const DEFAULTS = { threshold: -12, preset: 'custom', masterDb: 0 };
+const DEFAULTS = { threshold: -12, masterDb: 0 };
 const RESTRICTED_URL = /^(chrome|edge|about|chrome-extension|devtools):|^https:\/\/chromewebstore\.google\.com/i;
 const RETRY_DELAYS = [400, 1500, 4000, 10000];
 const MAX_RECONCILE_FAILS = 3;
-
-const PRESETS = {
-  // custom = ไม่บีบเสียงเลย (ratio 1) ให้ limiter แบบ brick-wall ทำหน้าที่คุมเพดานอย่างเดียว
-  custom: { ratio: 1, attack: 0.003, release: 0.25, knee: 0, makeupDb: 0 },
-  night: { threshold: -26, ratio: 20, attack: 0.002, release: 0.4, knee: 0, makeupDb: 0 },
-  speech: { threshold: -18, ratio: 4, attack: 0.01, release: 0.15, knee: 8, makeupDb: 3 }
-};
 
 // ---------- serialize ----------
 // งาน start/stop ต้องทำทีละงาน ไม่งั้นสร้าง Offscreen Document ซ้อนกันได้
@@ -28,26 +21,25 @@ const retrying = new Map(); // tabId -> ครั้งที่กำลัง�
 const lastError = new Map(); // tabId -> error ล่าสุด
 const reconcileFails = new Map(); // tabId -> จำนวนรอบ reconcile ที่ล้มเหลวติดกัน
 const pinState = new Map(); // tabId -> 'ok' | 'fail' สถานะการฝังสคริปต์ล็อกเสียงของเว็บ
+let testRunning = false;
 
 // ---------- settings / session state ----------
 async function getSettings() {
-  const s = await chrome.storage.local.get(['threshold', 'preset', 'masterDb']);
+  const s = await chrome.storage.local.get(['threshold', 'masterDb']);
   return {
     threshold: typeof s.threshold === 'number' ? s.threshold : DEFAULTS.threshold,
-    preset: PRESETS[s.preset] ? s.preset : DEFAULTS.preset,
     masterDb: typeof s.masterDb === 'number' ? s.masterDb : DEFAULTS.masterDb
   };
 }
 
 function buildParams(settings) {
-  const p = PRESETS[settings.preset] || PRESETS.custom;
   return {
     threshold: settings.threshold,
-    ratio: p.ratio,
-    attack: p.attack,
-    release: p.release,
-    knee: p.knee,
-    makeupDb: p.makeupDb,
+    ratio: 1,
+    attack: 0.003,
+    release: 0.25,
+    knee: 0,
+    makeupDb: 0,
     masterDb: settings.masterDb
   };
 }
@@ -97,7 +89,7 @@ async function closeOffscreen() {
 
 async function closeOffscreenIfIdle() {
   const { captures } = await getSession();
-  if (Object.keys(captures).length === 0) await closeOffscreen();
+  if (Object.keys(captures).length === 0 && !testRunning) await closeOffscreen();
 }
 
 // ---------- badge ----------
@@ -282,6 +274,7 @@ async function stopTabCapture(tabId, { keepWanted = false } = {}) {
 }
 
 async function stopAllCapture() {
+  testRunning = false;
   const s = await getSession();
   await saveSession({ captures: {}, wanted: {} });
   retrying.clear();
@@ -492,11 +485,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case 'TOGGLE':
         return toggleForTab(msg.tabId);
       case 'SETTINGS_CHANGED': {
-        // popup แก้ค่า (slider/preset) แล้ว ส่งค่าใหม่ไปที่ offscreen ทันที
+        // The popup changed an audio setting; immediately apply it in offscreen.
         const { captures } = await getSession();
-        if (Object.keys(captures).length > 0) {
+        if (Object.keys(captures).length > 0 || testRunning) {
           await sendToOffscreen({ type: 'UPDATE', params: buildParams(await getSettings()) }, 1);
         }
+        return { ok: true };
+      }
+      case 'TEST_START': {
+        await ensureOffscreen();
+        const result = await sendToOffscreen({ type: 'TEST_START', params: buildParams(await getSettings()) }, 1);
+        testRunning = !!(result && result.ok);
+        return result || { ok: false };
+      }
+      case 'TEST_STOP': {
+        testRunning = false;
+        if (await hasOffscreen()) await sendToOffscreen({ type: 'TEST_STOP' }, 1);
+        await closeOffscreenIfIdle();
         return { ok: true };
       }
       case 'CAPTURE_ENDED':
@@ -559,6 +564,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 ensureAlarm();
 
 async function freshStart() {
+  testRunning = false;
   await saveSession({ captures: {}, wanted: {}, blocked: {} });
   retrying.clear();
   reconcileFails.clear();

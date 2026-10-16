@@ -9,6 +9,7 @@ let limiterGr = 0; // dB (ติดลบ = limiter กำลังลดเส�
 let meterTimer = null;
 const entries = new Map(); // tabId -> { stream, source, compressor, makeup }
 const meterPorts = new Set();
+let testEntry = null;
 
 const MIN_DB = -100;
 const toDb = (v) => (v > 0 ? Math.max(MIN_DB, 20 * Math.log10(v)) : MIN_DB);
@@ -85,7 +86,7 @@ async function ensureShared() {
         bus.connect(limiter.node);
         limiter.node.connect(master);
         master.connect(ctx.destination); // ส่งเสียงกลับออกลำโพง (ไม่ให้แท็บเงียบ)
-        limiter.node.connect(splitter); // จุดวัดระดับ: วัดหลัง limiter
+        master.connect(splitter); // Meter the final output, including master volume and test audio.
         splitter.connect(anL, 0);
         splitter.connect(anR, 1);
 
@@ -185,7 +186,7 @@ function disposeEntry(entry) {
 }
 
 async function closeContextIfIdle() {
-  if (entries.size > 0) return;
+  if (entries.size > 0 || testEntry) return;
   stopMeterLoop();
   const ctx = audioCtx;
   audioCtx = null;
@@ -211,6 +212,41 @@ async function stopAll() {
   await closeContextIfIdle();
 }
 
+async function startTest() {
+  await stopTest();
+  const { ctx, bus } = await ensureShared();
+  const oscillator = ctx.createOscillator();
+  const gain = ctx.createGain();
+  const notes = [261.63, 329.63, 392.0, 523.25, 392.0, 329.63, 293.66, 349.23];
+  const beat = 0.28;
+  const start = ctx.currentTime;
+  oscillator.type = 'sine';
+  let noteIndex = 0;
+  oscillator.frequency.value = notes[noteIndex];
+  oscillator.connect(gain);
+  gain.connect(bus);
+  gain.gain.setValueAtTime(Math.pow(10, -60 / 20), start);
+  gain.gain.linearRampToValueAtTime(1, start + 5);
+  oscillator.start();
+  const noteTimer = setInterval(() => {
+    noteIndex = (noteIndex + 1) % notes.length;
+    oscillator.frequency.setTargetAtTime(notes[noteIndex], ctx.currentTime, 0.012);
+  }, beat * 1000);
+  testEntry = { oscillator, gain, noteTimer };
+  if (meterPorts.size > 0) startMeterLoop();
+}
+
+async function stopTest() {
+  if (!testEntry) return;
+  const entry = testEntry;
+  testEntry = null;
+  clearInterval(entry.noteTimer);
+  try { entry.oscillator.stop(); } catch (e) { /* ignore */ }
+  try { entry.oscillator.disconnect(); } catch (e) { /* ignore */ }
+  try { entry.gain.disconnect(); } catch (e) { /* ignore */ }
+  await closeContextIfIdle();
+}
+
 // ---------- level meter (วัดหลัง limiter = ระดับที่ออกลำโพงจริงก่อนปรับระดับรวม) ----------
 function peakRms(buf) {
   let peak = 0;
@@ -224,7 +260,7 @@ function peakRms(buf) {
 }
 
 function readLevel() {
-  if (!shared || entries.size === 0) return null;
+  if (!shared || (entries.size === 0 && !testEntry)) return null;
   shared.anL.getFloatTimeDomainData(shared.bufL);
   shared.anR.getFloatTimeDomainData(shared.bufR);
   const l = peakRms(shared.bufL);
@@ -280,6 +316,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await startTab(msg.tabId, msg.streamId, msg.params);
         if (meterPorts.size > 0) startMeterLoop();
         sendResponse({ ok: true });
+      } else if (msg.type === 'TEST_START') {
+        await ensureShared();
+        applyShared(msg.params, true);
+        await startTest();
+        sendResponse({ ok: true });
+      } else if (msg.type === 'TEST_STOP') {
+        await stopTest();
+        sendResponse({ ok: true });
       } else if (msg.type === 'UPDATE') {
         if (shared) {
           applyShared(msg.params, false);
@@ -301,6 +345,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({ ok: true });
       } else if (msg.type === 'STOP_ALL') {
         await stopAll();
+        await stopTest();
         sendResponse({ ok: true });
       } else {
         sendResponse({ ok: false });

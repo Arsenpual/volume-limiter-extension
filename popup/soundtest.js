@@ -74,7 +74,8 @@
   const TYPES = {
     burst: 'Sudden loud sound (short noise burst)',
     noise: 'Continuous noise (similar to ads or music)',
-    tone: 'Continuous 1 kHz tone'
+    tone: 'Continuous 1 kHz tone',
+    music: 'Short musical loop'
   };
 
   // Build a test signal with peak = 1.0; gain later sets the output level.
@@ -97,7 +98,24 @@
 
     let data;
     let activeEnd;
-    if (type === 'noise') {
+    if (type === 'music') {
+      // A compact, synthesized major-key melody. Normalize it so its sample peak is exactly 1.0.
+      const beat = Math.round(sr * 0.28);
+      const notes = [261.63, 329.63, 392.0, 523.25, 392.0, 329.63, 293.66, 349.23];
+      data = new Float32Array(beat * notes.length);
+      for (let n = 0; n < notes.length; n++) {
+        const start = n * beat;
+        for (let i = 0; i < beat; i++) {
+          const t = i / sr;
+          const progress = i / beat;
+          const envelope = Math.sin(Math.PI * progress) ** 0.7;
+          const fundamental = Math.sin(2 * Math.PI * notes[n] * t);
+          const harmonic = 0.28 * Math.sin(2 * Math.PI * notes[n] * 2 * t);
+          data[start + i] = (fundamental + harmonic) * envelope;
+        }
+      }
+      activeEnd = data.length;
+    } else if (type === 'noise') {
       data = pinkNoise(Math.round(sr * 4), mulberry32(7));
       activeEnd = data.length;
     } else {
@@ -132,7 +150,6 @@
 
   root.AVLSoundTest = {
     RAMP_DB_PER_S, START_DB, MUTE_DB, TYPES,
-    MAX_MS: 20000, // Automatically stop after 20 seconds (adjustable for testing only).
     dbToLin, outputPeakDb, nextLevelDb, buildSignal
   };
 })(typeof window !== 'undefined' ? window : globalThis);
